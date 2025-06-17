@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>智友醫社同行計劃 · 顏色視角配對</title>
+<style>
+:root{--tower-size:88px;--border:5px;--gap:16px;--layer-h:20px;--touch:44px;}
+*{box-sizing:border-box;margin:0;padding:0;font-family:"Noto Sans TC",sans-serif;}
+body{display:flex;flex-direction:column;align-items:center;background:#f7f7f7;padding:24px;}
+h1{font-size:1.6rem;margin-bottom:20px;text-align:center;}
+button{cursor:pointer;border:none;border-radius:10px;padding:12px 28px;font-weight:700;font-size:1rem;}
+section{width:100%;max-width:960px;}
+#stage{position:relative;}
+#columns{display:grid;grid-template-columns:1fr 1fr;gap:var(--gap);justify-items:center;}
+.column{display:flex;flex-direction:column;gap:var(--gap);}
+.tower{width:var(--tower-size);height:var(--tower-size);position:relative;touch-action:none;}
+.tower[data-matched="true"]{opacity:0.6;}
+.circle-layer{position:absolute;border:var(--border) solid #000;border-radius:50%;left:50%;top:50%;transform:translate(-50%,-50%);}
+.rect-stack{display:flex;flex-direction:column;justify-content:flex-start;height:100%;}
+.rect-layer{border:var(--border) solid #000;border-radius:6px;height:var(--layer-h);align-self:center;margin:2px 0;}
+#svg{position:fixed;top:0;left:0;width:100vw;height:100vh;pointer-events:none;z-index:99;}
+#svg line.preview{stroke:#000;stroke-width:4;stroke-dasharray:6 6;stroke-linecap:round;}
+#toast{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,.8);color:#fff;padding:20px 34px;border-radius:12px;font-size:1.2rem;opacity:0;transition:opacity .3s;z-index:120;}
+#toast.show{opacity:1;}
+#timer,#level,#backBtn{position:fixed;top:14px;background:#000;color:#fff;padding:6px 14px;border-radius:10px;font-weight:700;z-index:120;}
+#timer{right:14px;}
+#level{left:14px;}
+#backBtn{right:110px;cursor:pointer;}
+#overlay{position:fixed;inset:0;background:rgba(255,255,255,.95);display:none;flex-direction:column;align-items:center;justify-content:center;text-align:center;z-index:130;}
+#overlay h2{font-size:2rem;margin-bottom:18px;}
+
+@media (min-width: 768px) {
+  :root { --tower-size: 120px; --gap: 36px; --layer-h: 26px; }
+  h1 { font-size: 1.6rem; }
+}
+
+
+#bottomBar {
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  width: 100%;
+  max-width: 960px;
+  padding: 12px 0;
+  position: fixed;
+  bottom: 0;
+  background-color: #ffffff;
+  box-shadow: 0 -2px 6px rgba(0,0,0,0.1);
+  z-index: 120;
+}
+
+#bottomBar > div {
+  background: #000;
+  color: #fff;
+  padding: 6px 14px;
+  border-radius: 10px;
+  font-weight: 700;
+  font-size: 1rem;
+  text-align: center;
+}
+
+/* Override previous fixed positioning */
+#timer, #level, #backBtn {
+  position: static !important;
+  top: auto !important;
+  left: auto !important;
+  right: auto !important;
+}
+
+</style>
+</head>
+<body>
+<h1>智友醫社同行計劃 · 顏色視角配對</h1>
+<section id="stage">
+  <svg id="svg"></svg>
+  <div id="columns">
+    <div id="leftCol" class="column"></div>
+    <div id="rightCol" class="column"></div>
+  </div>
+</section>
+
+
+
+<div id="toast"></div>
+<div id="bottomBar">
+  <div id="level">層數：2</div>
+  <div id="backBtn">← 返回上一關</div>
+  <div id="timer">00:00</div>
+</div>
+
+<div id="overlay"><h2>全部關卡完成！</h2><button id="restartBtn">重新開始</button></div>
+<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+<script>
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const svg=$('#svg'),leftCol=$('#leftCol'),rightCol=$('#rightCol');
+const timerBox=$('#timer'),levelBox=$('#level'),overlay=$('#overlay'),restartBtn=$('#restartBtn'),backBtn=$('#backBtn');
+const toast=$('#toast');
+const COLORS=['red','yellow','blue','green'];
+let currentLayer=2,successCount=0,startTime,timerInt,towers=[],origin=null,preview=null;
+const shuffle=a=>{for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;};
+const center=el=>{const r=el.getBoundingClientRect();return{x:r.left+r.width/2+scrollX,y:r.top+r.height/2+scrollY};};
+function showToast(msg){toast.textContent=msg;toast.classList.add('show');setTimeout(()=>toast.classList.remove('show'),1800);}
+function showSuccessToast(){showToast('讚賞你過關了！');}
+function makeCircleTower(seq,id){const w=document.createElement('div');w.className='tower';w.dataset.id=id;const step=100/seq.length;for(let i=seq.length-1;i>=0;i--){const c=document.createElement('div');c.className='circle-layer';c.style.width=c.style.height=`${step*(i+1)}%`;c.style.background=seq[i];w.appendChild(c);}return w;}
+function makeRectTower(seq,id){const w=document.createElement('div');w.className='tower';w.dataset.id=id;const stack=document.createElement('div');stack.className='rect-stack';seq.forEach((clr,i)=>{const d=document.createElement('div');d.className='rect-layer';d.style.width=`${35+i*(50/seq.length)}%`;d.style.background=clr;stack.appendChild(d);});w.appendChild(stack);return w;}
+function updatePreview(p1,p2){if(!preview){preview=document.createElementNS('http://www.w3.org/2000/svg','line');preview.setAttribute('class','preview');svg.appendChild(preview);}preview.setAttribute('x1',p1.x);preview.setAttribute('y1',p1.y);preview.setAttribute('x2',p2.x);preview.setAttribute('y2',p2.y);}
+function clearPreview(){if(preview){preview.remove();preview=null;}}
+function drawLine(p1,p2,good){const l=document.createElementNS('http://www.w3.org/2000/svg','line');l.setAttribute('x1',p1.x);l.setAttribute('y1',p1.y);l.setAttribute('x2',p2.x);l.setAttribute('y2',p2.y);l.setAttribute('stroke',good?'#0a0':'#c00');l.setAttribute('stroke-width','6');l.setAttribute('stroke-linecap','round');svg.appendChild(l);if(!good)setTimeout(()=>l.remove(),600);}
+function startTimer(){startTime=Date.now();timerInt=setInterval(()=>{const s=Math.floor((Date.now()-startTime)/1000);timerBox.textContent=`${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;if(s>=600){downgrade();}},500);}
+function stopTimer(){clearInterval(timerInt);}
+function buildBoard(){
+  if (currentLayer <= 2) {
+    backBtn.style.display = 'none';
+  } else {
+    backBtn.style.display = 'block';
+  }
+svg.innerHTML='';leftCol.innerHTML='';rightCol.innerHTML='';towers=[];for(let i=0;i<4;i++){const seq=Array.from({length:currentLayer},()=>COLORS[Math.floor(Math.random()*COLORS.length)]);towers.push({id:'t'+i,seq,matched:false});}
+towers.forEach(t=>leftCol.appendChild(makeCircleTower(t.seq,t.id)));
+shuffle([...towers]).forEach(t=>rightCol.appendChild(makeRectTower(t.seq,t.id)));
+bindPointer();
+levelBox.textContent=`層數：${currentLayer}`;
+timerBox.textContent='00:00';
+stopTimer();startTimer();}
+function upgrade(){successCount=0;if(currentLayer<6){currentLayer++;buildBoard();}else{stopTimer();overlay.style.display='flex';}}
+function downgrade(){if(currentLayer>2){currentLayer--;successCount=0;}buildBoard();}
+function checkFinish(){if(towers.every(t=>t.matched)){stopTimer();successCount++;if(successCount>=2){upgrade();}else{showSuccessToast();buildBoard();}}}
+function bindPointer(){leftCol.querySelectorAll('.tower').forEach(t=>{t.addEventListener('pointerdown',()=>{if(t.dataset.matched==='true')return;origin=t;const move=e=>updatePreview(center(origin),{x:e.clientX+scrollX,y:e.clientY+scrollY});const up=e=>{clearPreview();const tgt=document.elementFromPoint(e.clientX,e.clientY)?.closest('#rightCol .tower');if(tgt&&tgt.dataset.matched!=='true'){const good=origin.dataset.id===tgt.dataset.id;drawLine(center(origin),center(tgt),good);showToast(good?'答案正確！':'有啲出錯，再試試吓！');if(good){origin.dataset.matched=tgt.dataset.matched='true';towers.find(x=>x.id===origin.dataset.id).matched=true;checkFinish();}}origin=null;window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up);};window.addEventListener('pointermove',move);window.addEventListener('pointerup',up);});});}
+buildBoard();
+restartBtn.onclick=()=>{overlay.style.display='none';currentLayer=2;successCount=0;buildBoard();};
+backBtn.onclick=()=>{if(currentLayer>2){currentLayer--;successCount=0;buildBoard();}};
+</script>
+</body>
+</html>
